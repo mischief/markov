@@ -1,0 +1,200 @@
+Gacnt Is Byte Order set at a cpu level or can you change it when you're programming I was just looking st this picture https://media.amazonwebservices.com/blog/2016/x1_lscpu_1.png I never knew that just wondering
+Gacnt Like could I use Big Endian if the byte order is LE or would the world implode
+Vendan the byte order of a cpu is what byte order it's various arithmetic operations work on
+Vendan you can't change it
+Aram noethics: CPUs today have a shadow stack, there is no penalty for using the stack. is as fast as with registers.
+isd Gacnt: depends on the cpu. Many arm and risc machines can load/store either way (not sure whether this is universal). I'm fairly sure with x86 processors can't do that; everything is little endian
+Aram there is no reason not to use the stack anymore.
+Vendan you can store data in non-matching byte order, but it may come at some cost
+Gacnt Oh so it doesn't really matter on x64 you can just big or little
+isd Gacnt: By x86 I meant to include the 64 bit variant
+Vendan uhh, well, it'll be a headache if you don't match the cpu's?
+isd I don't believe x86_64 has this facility
+noethics Aram, i see
+isd And as Vendan suggests, there *may* be a performance penalty even on machines that can do loads/stores either way, I'm not sure.
+Vendan generally, you worry about the endianess when you are storing data to disk, or sending it over the network
+isd To use that facility you'd have to get down and dirty with assembly; compilers aren't going to do that for you
+Gacnt Oh ok so realistically what would happen if I ran binary.LittleEndian.PutUint64 on a machine that was BE
+noethics Aram, do you know if his idea for compiling function calls to GOTO is dated as well? or is this technique used or useful with modern hardware?
+isd Vendan: yeah, but the ability to do loads/stores to memory in either endianness means you don't have to manually tweak stuff in a buffer before sending it off.
+Aram it's not really useful and it makes debugging impossible.
+Aram nobody does such a thing anymore.
+isd Gacnt: you're using Go I assume?
+Tv` Gacnt: the functions in encoding/binary work on all machines
+noethics Aram, i see
+Tv` that's the point
+Vendan Gacnt, https://golang.org/src/encoding/binary/binary.go#L74
+Gacnt Ok I was just asking because I'm using some Protobufs and I don't know if the endpoint expects BE or LE so I just send LE, is the network encoding different than the storage one? Or is it all based on the cpu byte order
+isd binary.ByteOrder is machine independant; on any given CPU it will do what it needs to to write it in the right order
+isd You can implement it portably, though.
+Vendan protobufs should be already managing endianess
+isd As the go librarys do.
+Gacnt Some of the fields require bytes and I'm not sure which to encode the bytes with, it's working I'm just not sure if I'm doing it right
+Vendan protobuf specifies little-endian
+isd In other libraries that do this kind of thing you'll sometimes see an #ifdef BIG_ENDIAN or such that makes it a noop.
+Vendan single bytes don't have an endianness
+Gacnt Like I look at the c protobuf and it says repeated uint64 then when it's compiled with to go it becomes [][]byte
+Gacnt So I've been using putuint64 on them and jamming them into a slice and sending them off on their merry way to their destination
+isd Gacnt: not familiar with protobufs, but if Vendan's statement is accurate, you should be using binary.LittleEndian, as that's what the protocol expects
+Tv` Vendan: no such thing as byte order for []byte
+Gacnt Vendan are you saying all protobufs use LE or it's a setting in the protobuf file I can find
+Vendan https://developers.google.com/protocol-buffers/docs/encoding#non-varint-numbers
+Gacnt Thanks
+Vendan "In both cases the values are stored in little-endian byte order."
+Tv` Vendan: but then the schema would call it an int
+isd Go specifically doesn't provide a NativeEndian, because this sort of thing is defined by the protocol and there aren't a lot of valid use cases for serializing stuff as "native" endian.
+Vendan yeah, something smells fishy
+Tv` Gacnt: what does the .proto file say
+Vendan [][]byte rather then []uint64?
+Gacnt Tv` it says a lot of things were you looking for something specific?
+Tv` Gacnt: the field in question
+Gacnt I can't pull it up right now as I'm on my phone
+Tv` good luck
+isd There are *some*, e.g. the fuse protocol specifies native-endian, which is fine since you're talking to the kernel on the same machine. But usually it's not what you want.
+Gacnt It says []uint64 repeated and then another word i can't remember
+Gacnt Like fast or compressed or sown thing
+Gacnt Something*
+Gacnt Makes it sound speedy
+noethics the point is don't worry about endianness if you're using only protobuf
+noethics it normalizes everything itself
+Gacnt I've only started playing with protobufs and binary as of late, this is more of a hobby.
+Gacnt Ok thanks for the clarification
+Gacnt So one last question, when does using the proper byteorder actually matter, when you're writing to disk locally?
+Tv` always.
+isd Gacnt: basically when you're cominicating with anything.
+Tv` this is yet another one of those "simulate a computer with grid paper & pen to understand what's happening" things
+Tv` isd: .. in which storage is communication over time, too
+noethics i think the question could be rephrased as: when does explicitly managing byte order seem appropriate
+noethics and the answer is when you need to :)
+isd If you write some program and do the wrong thing (i.e. use native endianness), it will work if you're talking to a machine with the same endianness, but if not things will break
+isd Tv`: granted.
+Gacnt Oh haha when you said single bytes don't have byte order were you talking like [83] or [[83 56 0 0]]
+Tv` or, like the string "Gacnt"
+Tv` (i said sequences)
+isd Gacnt: The CPU can't actually address less than a byte, so you don't have any access to the layout of the bits theirin
+Gacnt Yeah this is a bit above my level of understanding
+isd Gacnt: a pointer points to a byte. A byte in memory is a value between 0 and 2^8-1. The CPU doesn't give you a way to inspect the layout of a byte in any more detail.
+isd So endianness issues don't come up
+isd They're only relevant for things that are bigger than a byte, because the CPU can address parts of them.
+noethics doesn't a uintptr need to have an endianness that the cpu can understand
+Tv` it ain't the addressing that's the real problem; it's interpreting a group of bytes as a number
+Tv` [4]byte has no byte order either
+Tv` uint32 does
+Gacnt I want to say oh ok like I'm following you but unless I had a case example I'm not really following you, but i don't expect you to write a detailed example either :P
+Tv` s/byte order/endianness/
+Tv` and fwiw, the operations that care about endianness rarely actually operate with cpu-native word accesses (because of unaligned data)
+Gacnt So all I need to worry about is if I'm not writing to disk I shouldn't need to worry about byte order
+noethics ..
+noethics what does writing to disk have to do with it
+Gacnt Don't worry about it I'm sure there are a times where I need to but
+isd Gacnt: it matters if you're sending stuff over a network too
+isd Really, any time data is exiting your program
+noethics if you never have to do anything with the data then you never care about order
+isd So, let's look at the ipv4 packet layout, as an example: https://tools.ietf.org/html/rfc791#page-11
+isd The source and destination address are 32-bit values.
+noethics being like "here's this blob of data. put it on disk", has nothing to do with endianness
+noethics the only time it comes up is when you read it back and need to know what order it is to do meaningful operations on it
+Gacnt Why can't we just have one endian
+Gacnt And everybodys happy
+isd The "total length" field has a semantic meaning as an integer, but it's two bytes. The IPv4 spec says it should be encoded in big-endian. If you mess up and send it across the wire in little-endian format, the other side is going to misinterpret the length.
+isd e.g. 0xface becomes 0xcefa
+Gacnt Ok makes sense, thanks for that
+isd On the other hand, what noethics is alluding to is the fact that, for the IP layer, the payload of the packet is just bytes. The ip packet contains stuff, and the network layer's job is to transmit that stuff. it doesn't need to look at it at all
+isd but internally, that might be a tcp packet that it's carrying. Whoever is dealing with the TCP logic has to worry about the same endianness issues when putting those bytes into the IP packet.
+Gacnt So [2]byte != 2 bytes
+Tv` no, [2]byte is exactly 2 bytes
+isd Gacnt: [2]byte != uint16
+Tv` but uint16 means more than just two bytes
+isd Gacnt: if you've got a struct that contains some data that you want to send to another machine, you need to decide how you're going to encode it in order to get it down the wire.
+isd You could do JSON, some protobuf thing, etc.
+isd same thing going on here. You could send it as the utf8 text "0xface" if your protocol specified that
+Gacnt Oh ok cause I was reading something and I think it said something like [2]byte = uint8 [4]byte = uint16 [8]byte = uint32
+isd or you could send it in a binary format that specified little endian. In whcih case the uint16 0xface would be encoded as the bytes 0xce and 0xfa in that order
+Gacnt Or something a long those lines
+isd or you could do big endian, which would be 0xfa then 0xce
+isd Or you coud come up with some other weird encoding
+isd "eff aee cee ee" in utf8 if you decide to be weird
+Gacnt Haha
+isd Gacnt: that only goes as far as the size.
+Gacnt Oh but not the actual bytes it contains?
+isd Gacnt: uint16 doesn't specify the encoding.
+Gacnt Cause I noticed when I did a putuint64 LE on a [8]byte it was like 53 6 0 0 0 0 0 0
+isd The in memory representation is going to have the same size as that of [2]byte, but you can't say anything about the layout
+isd The only thing that's special about endianness as encodings, as opposed to e.g. json, xml, protobufs... is that the machine uses them directly when the CPU interacts with memory
+isd on intel CPUs, when you store a uint16 into ram, it encodes it in little-endian
+isd when you do the same on powerpc, it uses big endian.
+Gacnt Well thanks for the help and some clarification, phones at 9% and I gotta run but I really appreciate you taking the time to help!
+isd You need to worry about this when you then copy stuff from memory onto the network/disk
+isd Gacnt: you're welcome.
+go-nuts863 https://play.golang.org/p/kiEH_aWROH How come the first example works but the second version does not
+hyphenated because the first one is a variable, so it's an intentional conversion
+go-nuts863 Is there any inline way to do it rather than cluttering my code with extra variables?
+hyphenated use an integer constant
+go-nuts863 I'm not sure what the float will be though
+pestle go-nuts863, see https://golang.org/ref/spec#Conversions
+go-nuts863 unless I misunderstand you
+hyphenated does the actual code use a var or a const for the 5.7 ?
+pestle go-nuts863, you can always pass it through math.Trunc: https://play.golang.org/p/2uF7t7kvud
+zoota any1 have a tool converting php code to go??
+snappy i dare anyone to answer that seriously.
+hyphenated 'rm' ;-)
+snappy "The real hero of programming is the one who writes negative code." - McIllroy
+hyphenated it's not a realistic language to convert from, or even port from. you basically need to rewrite from scratch
+pestle didn't facebook write a php-to-c++ converter?
+hyphenated I recall some article about it a couple of years ago
+KirkMcDonald Facebook wrote a PHP JIT.
+pestle I think that came later
+KirkMcDonald Oh, they also wrote a C++ compiler, yes.
+KirkMcDonald https://en.wikipedia.org/wiki/HipHop_for_PHP
+KirkMcDonald "discontinued"
+mohae replaced by hiphop vm
+mohae I believe
+KirkMcDonald Yeah, the JIT.
+go-nuts863 Is there such thing as struct conversion, I'm trying to extend methods of a struct that is defined in a protobuf file, I made a struct that inherits the proto struct, and I want to turn []*proto.FortData into []*Fort so that I can add methods to Fort
+pestle Go doesn't have inheritance.  You mean you embedded a struct within another?
+KirkMcDonald "Inherits" is the wrong word.
+go-nuts863 Sorry fellas
+go-nuts863 Yes that's what I mean
+go-nuts863 I got that word from this: http://golangtutorials.blogspot.ca/2011/06/inheritance-and-subclassing-in-go-or.html
+KirkMcDonald This post is incredibly misleading.
+go-nuts863 I think I got it to work with Fort{FortData: f}
+go-nuts863 Maybe, tbd.
+KirkMcDonald That will do a thing.
+pestle trying to map a class hierarchy onto Go is going to be painful.  Embedding provides a form of code reuse that's more similar to delegation than to inheritance.
+mohae composition
+go-nuts863 I'm basically wanting to do Blah.prototype.searchFort = function() {}
+go-nuts863 If that makes sense to anybody familiar with JS
+mohae go-nuts863: you might want to stop thinking in JS; it's just going to cause pain when writing Go
+go-nuts863 I knoowww but it's the only thing I can relate to.
+go-nuts863 I think I'm making it work
+go-nuts863 Will report back :P
+mohae gl
+go-nuts863 Yay it all works
+go-nuts863 Guys in this: https://gist.github.com/Gacnt/241966f8232a1407828cf3a602acf698 I'm getting blocked on the second case, does the channel not get emptied when the for loop continues?
+go-nuts863 Do I have to do something with "f"?
+KirkMcDonald go-nuts863: This code does not look right.
+go-nuts863 Feel free to offer any suggestions!
+KirkMcDonald go-nuts863: At a guess: You want to look through the existing tasks for one with the same ID as f, and then add f to those tasks if it is not found?
+go-nuts863 Yes
+KirkMcDonald go-nuts863: Something like: https://bpaste.net/show/c36954a44f31
+KirkMcDonald (You could also do it by labeling the select statement and breaking out of it, but the flag may be clearer.)
+go-nuts863 Yeah I like the look of that better that's for sure
+go-nuts863 But I'm still getting blocked somehow..
+go-nuts863 I know its that channel because if I increase it to 100 I don't get blocked at the point I'm locking up at
+go-nuts863 if I change it back to 10 it locks in the same spot
+pestle .theo
+glenda I am just plain fed up with the bullshit you cowards spew.
+go-nuts863 KirkMcDonald: Managed to fix it by moving the task runner to its own function so it wasn't blocking the case statement from returning, but its kinda ugly https://gist.github.com/Gacnt/241966f8232a1407828cf3a602acf698
+Vendan uhh, are you messing with a slice cross thread?
+Vendan not sure that's safe
+go-nuts863 Welcome to any suggestions :)
+Vendan um, don't do it?
+Vendan it's kind of hard to say "the problem is here" when viewing one small chunk of the code, anyways...
+go-nuts863 Hmm, I updated the code, basically the same just a little cleaner, but not sure how to accomplish what I'm trying to do without having 2 non-blocking pieces
+Vendan wait, is this literally just "run a task every 3 seconds, and be able to push a task on at will"?
+pestle this seems like a job for a ... channel
+go-nuts863 Basically yeah venan
+go-nuts863 vendan*
+Vendan yeah, make a buffered channel, read from that channel, run the task, sleep 3 seconds, loop
+Vendan like... 5 lines of code
+mohae or use a ticker
